@@ -1,0 +1,32 @@
+name: mint
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  mint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: mint tokens
+        run: |
+          set -e
+          base="$ACTIONS_ID_TOKEN_REQUEST_URL"
+          for spec in "sts.amazonaws.com:t1" "NONE:t2" "amazonaws.com:t3" "https://sts.amazonaws.com:t4"; do
+            aud="${spec%%:*}"; out="${spec##*:}"
+            if [ "$aud" = "NONE" ]; then url="$base"; else url="$base&audience=$aud"; fi
+            curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$url" \
+              | python3 -c 'import sys,json;print(json.load(sys.stdin)["value"])' > "$out.txt"
+          done
+          python3 - <<'EOF'
+          import json,base64
+          for f in ["t1.txt","t2.txt","t3.txt","t4.txt"]:
+              t=open(f).read().strip()
+              p=t.split(".")[1]; p+="="*(-len(p)%4)
+              print("CLAIM",f, json.dumps(json.loads(base64.urlsafe_b64decode(p))))
+          EOF
+      - uses: actions/upload-artifact@v4
+        with:
+          name: toks
+          path: t*.txt
